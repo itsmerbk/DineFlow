@@ -1,0 +1,237 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>DineFlow — Restaurant POS & Real-Time Kitchen Display System</title>
+  <style>
+    :root {
+      --bg: #0b0e14;
+      --surface: #141923;
+      --border: #232c3d;
+      --text: #e6edf3;
+      --muted: #8b9bb4;
+      --orange: #fb923c;
+      --green: #22c55e;
+      --blue: #38bdf8;
+      --red: #ef4444;
+    }
+    * { box-sizing: border-box; }
+    body { margin: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; background: var(--bg); color: var(--text); }
+    header { background: var(--surface); border-bottom: 1px solid var(--border); padding: 15px 26px; display: flex; justify-content: space-between; align-items: center; }
+    header h1 { margin: 0; font-size: 20px; color: var(--orange); }
+    .container { max-width: 1320px; margin: 20px auto; padding: 0 20px; }
+    .kpis { display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: 14px; margin-bottom: 20px; }
+    .kpi { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 15px; }
+    .kpi .label { font-size: 12px; color: var(--muted); text-transform: uppercase; }
+    .kpi .val { font-size: 26px; font-weight: 800; margin-top: 5px; }
+    .workspace { display: grid; grid-template-columns: 1.25fr 1fr; gap: 20px; }
+    @media (max-width: 980px) { .workspace { grid-template-columns: 1fr; } }
+    .panel { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 18px; }
+    .panel h2 { margin: 0 0 14px; font-size: 16px; color: var(--orange); }
+    .table-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(175px, 1fr)); gap: 12px; }
+    .t-card { background: #0e131b; border: 1px solid var(--border); border-radius: 10px; padding: 14px; cursor: pointer; transition: 0.12s ease; }
+    .t-card:hover { border-color: var(--orange); transform: translateY(-2px); }
+    .t-top { display: flex; justify-content: space-between; align-items: center; font-weight: 800; font-size: 17px; }
+    .badge { padding: 3px 7px; border-radius: 5px; font-size: 10.5px; font-weight: 700; }
+    .VACANT { background: rgba(34,197,94,0.16); color: var(--green); }
+    .DINING { background: rgba(251,146,60,0.2); color: var(--orange); }
+    .QUEUED { background: rgba(56,189,248,0.18); color: var(--blue); }
+    .PREPARING { background: rgba(251,146,60,0.22); color: var(--orange); }
+    .READY { background: rgba(34,197,94,0.22); color: var(--green); }
+    .kot-card { background: #0e131b; border: 1px solid var(--border); border-radius: 10px; padding: 12px 14px; margin-bottom: 10px; display: flex; justify-content: space-between; align-items: center; gap: 10px; }
+    .btn { padding: 8px 12px; border: none; border-radius: 7px; font-weight: 700; cursor: pointer; font-size: 12px; }
+    .btn-kds { background: var(--blue); color: #04131f; }
+    .btn-ready { background: var(--green); color: #052e16; }
+    .modal-bg { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.75); align-items: center; justify-content: center; z-index: 50; }
+    .modal { background: var(--surface); border: 1px solid var(--border); border-radius: 14px; padding: 22px; width: 94%; max-width: 560px; max-height: 90vh; overflow-y: auto; }
+    .menu-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; margin: 12px 0; }
+    .menu-btn { background: #0e131b; border: 1px solid var(--border); color: var(--text); padding: 9px; border-radius: 8px; text-align: left; cursor: pointer; }
+    .menu-btn:hover { border-color: var(--orange); }
+    .bill-box { background: #0b0e14; border: 1px solid var(--border); border-radius: 9px; padding: 12px; margin-top: 12px; font-size: 13.5px; }
+    .bill-row { display: flex; justify-content: space-between; padding: 4px 0; }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>DineFlow · Restaurant POS & Live Kitchen Display System (KDS)</h1>
+    <span style="color:var(--green);font-size:12.5px;font-weight:700">● KOT SYNC ACTIVE</span>
+  </header>
+
+  <div class="container">
+    <div class="kpis">
+      <div class="kpi"><div class="label">Active Dining Tables</div><div class="val" id="k-tables">0 / 8</div></div>
+      <div class="kpi"><div class="label">Kitchen Prep Queue</div><div class="val" style="color:var(--orange)" id="k-prep">0</div></div>
+      <div class="kpi"><div class="label">Ready on Pass</div><div class="val" style="color:var(--green)" id="k-ready">0</div></div>
+      <div class="kpi"><div class="label">Settled Sales (Incl. 5% GST)</div><div class="val" style="color:var(--blue)" id="k-rev">₹0</div></div>
+    </div>
+
+    <div class="workspace">
+      <div class="panel">
+        <h2>Interactive Dining Floor Plan (Click Table to Order or Settle Bill)</h2>
+        <div class="table-grid" id="table-grid"></div>
+      </div>
+
+      <div class="panel">
+        <h2>Live Kitchen Display System (KDS)</h2>
+        <div id="kds-list"></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="modal-bg" id="pos-modal">
+    <div class="modal">
+      <div style="display:flex;justify-content:space-between;align-items:center">
+        <h2 style="margin:0" id="modal-title">Table POS</h2>
+        <button class="btn" style="background:#232c3d;color:#fff" onclick="closeModal()">✕ Close</button>
+      </div>
+      <div style="font-size:12.5px;color:var(--muted);margin-top:6px">Tap a menu item to fire a Kitchen Order Ticket (KOT):</div>
+      <div class="menu-grid" id="menu-grid"></div>
+
+      <div class="bill-box" id="bill-box"></div>
+
+      <div style="display:flex;gap:10px;margin-top:14px;align-items:center;justify-content:space-between">
+        <div>
+          <label style="font-size:12px;color:var(--muted)">Split Bill Ways: </label>
+          <input id="split-ways" type="number" min="1" max="12" value="1" style="width:55px;padding:6px;background:#0b0e14;color:#fff;border:1px solid var(--border);border-radius:6px" oninput="renderModalBill()" />
+          <span id="split-each" style="margin-left:8px;font-weight:700;color:var(--orange)"></span>
+        </div>
+        <button class="btn btn-ready" style="padding:10px 18px;font-size:13.5px" onclick="settleTable()">Settle Bill & Free Table</button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    let state = { metrics: {}, tables: [], kdsTickets: [], menu: [] };
+    let selectedTableCode = null;
+
+    async function loadState() {
+      const res = await fetch('/api/state');
+      state = await res.json();
+      document.getElementById('k-tables').textContent = `${state.metrics.activeTables} / ${state.metrics.totalTables}`;
+      document.getElementById('k-prep').textContent = state.metrics.kitchenPending;
+      document.getElementById('k-ready').textContent = state.metrics.readyToServe;
+      document.getElementById('k-rev').textContent = '₹' + state.metrics.revenue.toLocaleString('en-IN');
+
+      renderTables();
+      renderKds();
+      if (selectedTableCode) renderModalBill();
+    }
+
+    function renderTables() {
+      const grid = document.getElementById('table-grid');
+      grid.innerHTML = state.tables.map(t => `
+        <div class="t-card" onclick="openTable('${t.tableCode}')">
+          <div class="t-top"><span>${t.tableCode}</span><span class="badge ${t.status}">${t.status}</span></div>
+          <div style="font-size:12px;color:var(--muted);margin:5px 0">${t.zone} · ${t.capacity} Seats</div>
+          <div style="font-size:14px;font-weight:700;color:${t.status === 'DINING' ? 'var(--orange)' : 'var(--muted)'}">
+            ${t.status === 'DINING' ? 'Bill: ₹' + t.runningSubtotal.toFixed(0) : 'Tap to Seat & Order'}
+          </div>
+        </div>
+      `).join('');
+    }
+
+    function renderKds() {
+      const box = document.getElementById('kds-list');
+      if (!state.kdsTickets.length) {
+        box.innerHTML = '<div style="color:var(--muted);font-size:13.5px">All kitchen orders served. Queue clear!</div>';
+        return;
+      }
+      const now = Date.now();
+      box.innerHTML = state.kdsTickets.map(k => {
+        const elapsedSec = Math.max(0, Math.floor((now - k.orderedAtMs) / 1000));
+        const mins = String(Math.floor(elapsedSec / 60)).padStart(2, '0');
+        const secs = String(elapsedSec % 60).padStart(2, '0');
+        const btnLabel = k.status === 'QUEUED' ? 'Start Prep' : (k.status === 'PREPARING' ? 'Mark Ready' : 'Mark Served');
+        const btnClass = k.status === 'READY' ? 'btn-ready' : 'btn-kds';
+        return `
+          <div class="kot-card">
+            <div>
+              <div><strong>[${k.tableCode}] ${k.qty}× ${k.itemName}</strong> <span class="badge ${k.status}">${k.status}</span></div>
+              <div style="font-size:12px;color:var(--muted);margin-top:4px">KOT #${k.kotId} · Elapsed: <strong>${mins}:${secs}</strong> (Target ${k.prepMins}m)</div>
+            </div>
+            <button class="btn ${btnClass}" onclick="advanceKot(${k.kotId})">${btnLabel}</button>
+          </div>
+        `;
+      }).join('');
+    }
+
+    function openTable(code) {
+      selectedTableCode = code;
+      document.getElementById('modal-title').textContent = `Table ${code} · Order & Billing`;
+      document.getElementById('menu-grid').innerHTML = state.menu.map(m => `
+        <button class="menu-btn" onclick="fireItem(${m.id})">
+          <div style="font-weight:700;font-size:13px">${m.name}</div>
+          <div style="font-size:11.5px;color:var(--muted)">${m.category} · ₹${m.price}</div>
+        </button>
+      `).join('');
+      renderModalBill();
+      document.getElementById('pos-modal').style.display = 'flex';
+    }
+
+    function renderModalBill() {
+      const tbl = state.tables.find(t => t.tableCode === selectedTableCode);
+      const box = document.getElementById('bill-box');
+      if (!tbl || !tbl.items.length) {
+        box.innerHTML = '<div style="color:var(--muted)">No items ordered yet. Click any dish above to send to kitchen.</div>';
+        document.getElementById('split-each').textContent = '';
+        return;
+      }
+      const sub = tbl.runningSubtotal;
+      const gst = Math.round(sub * 0.05 * 100) / 100;
+      const total = Math.round((sub + gst) * 100) / 100;
+      const ways = Math.max(1, parseInt(document.getElementById('split-ways').value || '1'));
+      document.getElementById('split-each').textContent = ways > 1 ? `(₹${(total / ways).toFixed(2)} / person)` : '';
+
+      box.innerHTML = tbl.items.map(i => `
+        <div class="bill-row"><span>${i.qty}× ${i.name} <span class="badge ${i.status}">${i.status}</span></span><span>₹${(i.qty * i.unitPrice).toFixed(2)}</span></div>
+      `).join('') + `
+        <hr style="border:0;border-top:1px dashed var(--border);margin:8px 0" />
+        <div class="bill-row"><span>Subtotal</span><span>₹${sub.toFixed(2)}</span></div>
+        <div class="bill-row"><span>GST (5%)</span><span>₹${gst.toFixed(2)}</span></div>
+        <div class="bill-row" style="font-weight:800;font-size:15px;color:var(--green)"><span>Grand Total</span><span>₹${total.toFixed(2)}</span></div>
+      `;
+    }
+
+    function closeModal() {
+      selectedTableCode = null;
+      document.getElementById('pos-modal').style.display = 'none';
+    }
+
+    async function fireItem(menuItemId) {
+      await fetch('/api/order', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ tableCode: selectedTableCode, menuItemId: String(menuItemId), qty: '1' })
+      });
+      loadState();
+    }
+
+    async function advanceKot(kotId) {
+      await fetch('/api/kds/advance', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ kotId: String(kotId) })
+      });
+      loadState();
+    }
+
+    async function settleTable() {
+      const res = await fetch('/api/settle', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ tableCode: selectedTableCode })
+      });
+      const data = await res.json();
+      if (!data.ok) { alert(data.error); return; }
+      alert(`Settled Table ${data.receipt.tableCode} — Paid ₹${data.receipt.total.toFixed(2)} (Incl. 5% GST)`);
+      closeModal();
+      loadState();
+    }
+
+    loadState();
+    setInterval(loadState, 3000);
+    setInterval(renderKds, 1000);
+  </script>
+</body>
+</html>
